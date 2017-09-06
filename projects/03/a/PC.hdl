@@ -17,4 +17,17 @@ CHIP PC {
 
     PARTS:
     // Put your code here:
+
+    // if reset = 1, then load->1 and in -> 0
+    // elseif load = 1, then inc->0
+    // elseif inc = 1, then load->1, in->out + 1
+
+    Inc16(in=rout, out=outadd1);
+    Mux(a=load, b=true, sel=reset, out=load1);
+    Mux16(a=in, b=false, sel=reset, out=in1);
+    Mux(a=inc, b=false, sel=load1, out=inc1);
+    Mux(a=load1, b=true, sel=inc1, out=load2);
+    Mux16(a=in1, b=outadd1, sel=inc1, out=in2);
+
+    Register(in=in2, load=load2, out=out, out=rout);
 }
