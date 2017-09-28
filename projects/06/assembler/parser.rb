@@ -16,6 +16,10 @@ class Parser
     end
   end
 
+  def reset
+    @current_command_index = -1
+  end
+
   def has_more_commands?
     !@commands[@current_command_index + 1].nil?
   end
