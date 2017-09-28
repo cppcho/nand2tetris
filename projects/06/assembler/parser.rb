@@ -14,7 +14,6 @@ class Parser
         @commands.push(line) if !line.empty?
       end
     end
-    p @commands
   end
 
   def has_more_commands?
