@@ -11,6 +11,8 @@ module Vm
       raise 'empty file_path' if file_path.nil?
 
       @label_counter = 0
+      @current_file_name = nil
+      @max_static_index = -1
 
       @file = File.new(file_path, 'w+')
 
@@ -23,6 +25,7 @@ module Vm
 
     def set_file_name(file_name)
       @file.puts("// File: #{file_name}")
+      @current_file_name = file_name
     end
 
     def write_arithmetic(command)
@@ -124,13 +127,23 @@ module Vm
           @file.puts('A=D')
           @file.puts('D=M')
         when 'static'
-          # TODO
+          write_extra_static_vars(index)
+          write_static_var_label(index)
+          @file.puts('D=M')
         when 'constant'
           @file.puts("// push constant #{index}")
           @file.puts("@#{index}")
           @file.puts('D=A')
         when 'pointer'
-          # TODO
+          @file.puts("// push pointer #{index}")
+          if index.zero?
+            @file.puts('@THIS')
+          elsif index == 1
+            @file.puts('@THAT')
+          else
+            raise "invalid pointer index #{index}"
+          end
+          @file.puts('D=M')
         else
           raise 'invalid command'
         end
@@ -178,6 +191,27 @@ module Vm
           @file.puts('@R13')
           @file.puts('A=M')
           @file.puts('M=D')
+        when 'pointer'
+          @file.puts('@SP')
+          @file.puts('A=M')
+          @file.puts('D=M')
+          @file.puts('M=0')
+          if index.zero?
+            @file.puts('@THIS')
+          elsif index == 1
+            @file.puts('@THAT')
+          else
+            raise "invalid pointer index #{index}"
+          end
+          @file.puts('M=D')
+        when 'static'
+          write_extra_static_vars(index)
+          @file.puts('@SP')
+          @file.puts('A=M')
+          @file.puts('D=M')
+          @file.puts('M=0')
+          write_static_var_label(index)
+          @file.puts('M=D')
         when 'constant'
           raise 'cannot pop to constant segment'
         end
@@ -196,6 +230,19 @@ module Vm
       label = "LBL#{@label_counter}"
       @label_counter += 1
       label
+    end
+
+    def write_static_var_label(index)
+      @file.puts("@#{@current_file_name}.#{index}")
+    end
+
+    def write_extra_static_vars(index)
+      return nil if index < @max_static_index
+      ((@max_static_index + 1)...index).each do |i|
+        write_static_var_label(i)
+      end
+      @max_static_index = index
+      nil
     end
   end
 end

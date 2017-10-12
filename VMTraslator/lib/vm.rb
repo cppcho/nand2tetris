@@ -1,13 +1,13 @@
-require "vm/code_writer"
-require "vm/parser"
+require 'vm/code_writer'
+require 'vm/parser'
 
 module Vm
-  VM_EXT = '.vm'
-  ASM_EXT = '.asm'
+  VM_EXT = '.vm'.freeze
+  ASM_EXT = '.asm'.freeze
 
   class VMTranslator
     def initialize(path)
-      raise "empty path" if path.nil?
+      raise 'empty path' if path.nil?
 
       @vm_files = []
       @output_file = nil
@@ -15,13 +15,9 @@ module Vm
       if File.directory?(path)
         @vm_files = Dir.entries(path).map do |f|
           fp = File.join(path, f)
-          if File.file?(fp) && File.extname(fp) == VM_EXT
-            fp
-          else
-            nil
-          end
-        end.select { |v| !v.nil? }
-        @output_file = File.expand_path(".", path) + ASM_EXT
+          fp if File.file?(fp) && File.extname(fp) == VM_EXT
+        end.reject(&:nil?)
+        @output_file = File.expand_path('.', path) + ASM_EXT
       elsif File.file?(path) && File.extname(path) == VM_EXT
         @vm_files.push(path)
         @output_file = File.join(File.dirname(path), File.basename(path, VM_EXT) + ASM_EXT)
@@ -29,14 +25,14 @@ module Vm
         raise "invalid path: #{path}"
       end
 
-      raise "no vm files" if @vm_files.empty?
+      raise 'no vm files' if @vm_files.empty?
     end
 
     def run
       code_writer = Vm::CodeWriter.new(@output_file)
       @vm_files.each do |f|
         parser = Vm::Parser.new(f)
-        code_writer.set_file_name(f)
+        code_writer.set_file_name(File.basename(f, VM_EXT))
 
         while parser.has_more_commands?
           parser.advance
