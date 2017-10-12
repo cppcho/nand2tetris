@@ -1,10 +1,6 @@
 module Vm
   TEMP_BASE = 5
   SP_BASE = 256
-  LOCAL_BASE = 300
-  ARGUMENT_BASE = 400
-  THIS_BASE = 3000
-  THAT_BASE = 3010
 
   class CodeWriter
     def initialize(file_path)
@@ -13,6 +9,7 @@ module Vm
       @label_counter = 0
       @current_file_name = nil
       @max_static_index = -1
+      @current_function_name = 'GLOBAL'
 
       @file = File.new(file_path, 'w+')
 
@@ -26,6 +23,106 @@ module Vm
     def set_file_name(file_name)
       @file.puts("// File: #{file_name}")
       @current_file_name = file_name
+    end
+
+    def write_init
+      @file.puts('// Bootstrap')
+      @file.puts('// SP=256')
+      @file.puts('// call Sys.init')
+      # TODO:
+      # @file.puts("@#{SP_BASE}")
+      # @file.puts('D=A')
+      # @file.puts('@SP')
+      # @file.puts('M=D')
+    end
+
+    def write_label(label)
+      @file.puts("// label #{label}")
+      @file.puts("(#{@current_function_name}.#{label})")
+    end
+
+    def write_goto(label)
+      @file.puts("// goto #{label}")
+      @file.puts("@#{@current_function_name}.#{label}")
+      @file.puts('0;JMP')
+    end
+
+    def write_if(label)
+      @file.puts("// if-goto #{label}")
+      @file.puts('@SP')
+      @file.puts('M=M-1')
+      @file.puts('A=M')
+      @file.puts('D=M')
+      @file.puts("@#{@current_function_name}.#{label}")
+      @file.puts('D;JGT')
+    end
+
+    def write_call(function_name, num_args)
+
+    end
+
+    def write_function(function_name, num_locals)
+      @file.puts("// function #{function_name} #{num_locals}")
+      (0...num_locals.to_i).each do |i|              # repeat num_locals times:
+        write_push_pop(:C_PUSH, 'constant', 0)  # PUSH 0
+      end
+    end
+
+    def write_return
+      @file.puts("// return")
+      @file.puts("@LCL")    # FRAME(R13) = LCL
+      @file.puts("D=M")
+      @file.puts("@R13")
+      @file.puts("M=D")
+      @file.puts("@5")      # RET(R14) = *(FRAME-5)
+      @file.puts("D=D-A")
+      @file.puts("A=D")
+      @file.puts("D=M")
+      @file.puts("@R14")
+      @file.puts("M=D")
+      @file.puts("@SP")     # *ARG = pop()
+      @file.puts("AM=M-1")
+      @file.puts("D=M")
+      @file.puts("M=0")
+      @file.puts("@ARG")
+      @file.puts("A=M")
+      @file.puts("M=D")
+      @file.puts("@ARG")    # SP = ARG + 1
+      @file.puts("D=M+1")
+      @file.puts("@SP")
+      @file.puts("M=D")
+      @file.puts("@R13")    # THAT = *(FRAME - 1)
+      @file.puts("A=M-1")
+      @file.puts("D=M")
+      @file.puts("@THAT")
+      @file.puts("M=D")
+      @file.puts("@R13")    # THIS = *(FRAME - 2)
+      @file.puts("D=M")
+      @file.puts("@2")
+      @file.puts("D=D-A")
+      @file.puts("A=D")
+      @file.puts("D=M")
+      @file.puts("@THIS")
+      @file.puts("M=D")
+      @file.puts("@R13")    # ARG = *(FRAME - 3)
+      @file.puts("D=M")
+      @file.puts("@3")
+      @file.puts("D=D-A")
+      @file.puts("A=D")
+      @file.puts("D=M")
+      @file.puts("@ARG")
+      @file.puts("M=D")
+      @file.puts("@R13")    # LCL = *(FRAME - 4)
+      @file.puts("D=M")
+      @file.puts("@4")
+      @file.puts("D=D-A")
+      @file.puts("A=D")
+      @file.puts("D=M")
+      @file.puts("@LCL")
+      @file.puts("M=D")
+      @file.puts("@R14")    # goto RET
+      @file.puts("A=M")
+      @file.puts("0;JMP")
     end
 
     def write_arithmetic(command)

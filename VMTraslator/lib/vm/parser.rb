@@ -8,8 +8,8 @@ module Vm
     C_GOTO_REGEX = /^goto\s+([^\s]+)$/
     C_IF_REGEX = /^if\-goto\s+([^\s]+)$/
     C_FUNCTION_REGEX = /^function\s+([^\s]+)\s+([0-9]+)$/
-    C_RETURN_REGEX = /^call\s+([^\s]+)\s+([0-9]+)$/
-    C_CALL_REGEX = /^return$/
+    C_CALL_REGEX = /^call\s+([^\s]+)\s+([0-9]+)$/
+    C_RETURN_REGEX = /^return$/
 
     def initialize(file_path)
       @commands = []
