@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'pathname'
+require "minitest"
 require_relative "parser.rb"
 require_relative "code.rb"
 require_relative "symbol_table.rb"
