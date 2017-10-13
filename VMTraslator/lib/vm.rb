@@ -17,7 +17,7 @@ module Vm
           fp = File.join(path, f)
           fp if File.file?(fp) && File.extname(fp) == VM_EXT
         end.reject(&:nil?)
-        @output_file = File.expand_path('.', path) + ASM_EXT
+        @output_file = File.join(path, File.basename(path, VM_EXT) + ASM_EXT)
       elsif File.file?(path) && File.extname(path) == VM_EXT
         @vm_files.push(path)
         @output_file = File.join(File.dirname(path), File.basename(path, VM_EXT) + ASM_EXT)

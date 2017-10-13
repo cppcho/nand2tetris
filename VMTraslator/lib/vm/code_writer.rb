@@ -29,11 +29,11 @@ module Vm
       @file.puts('// Bootstrap')
       @file.puts('// SP=256')
       @file.puts('// call Sys.init')
-      # TODO:
-      # @file.puts("@#{SP_BASE}")
-      # @file.puts('D=A')
-      # @file.puts('@SP')
-      # @file.puts('M=D')
+      @file.puts("@#{SP_BASE}")
+      @file.puts('D=A')
+      @file.puts('@SP')
+      @file.puts('M=D')
+      write_call('Sys.init', 0)
     end
 
     def write_label(label)
@@ -54,15 +54,69 @@ module Vm
       @file.puts('A=M')
       @file.puts('D=M')
       @file.puts("@#{@current_function_name}.#{label}")
-      @file.puts('D;JGT')
+      @file.puts('D;JNE')
     end
 
     def write_call(function_name, num_args)
+      @file.puts("// call #{function_name} #{num_args}")
+      return_address_label = new_label
 
+      @file.puts("@#{return_address_label}")  # push return-address
+      @file.puts('D=A')
+      @file.puts('@SP')
+      @file.puts('A=M')
+      @file.puts('M=D')
+      @file.puts('@SP')
+      @file.puts('M=M+1')
+      @file.puts('@LCL')                      # push LCL
+      @file.puts('D=M')
+      @file.puts('@SP')
+      @file.puts('A=M')
+      @file.puts('M=D')
+      @file.puts('@SP')
+      @file.puts('M=M+1')
+      @file.puts('@ARG')                      # push ARG
+      @file.puts('D=M')
+      @file.puts('@SP')
+      @file.puts('A=M')
+      @file.puts('M=D')
+      @file.puts('@SP')
+      @file.puts('M=M+1')
+      @file.puts('@THIS')                     # push THIS
+      @file.puts('D=M')
+      @file.puts('@SP')
+      @file.puts('A=M')
+      @file.puts('M=D')
+      @file.puts('@SP')
+      @file.puts('M=M+1')
+      @file.puts('@THAT')                     # push THIS
+      @file.puts('D=M')
+      @file.puts('@SP')
+      @file.puts('A=M')
+      @file.puts('M=D')
+      @file.puts('@SP')
+      @file.puts('M=M+1')
+      @file.puts('@SP')                       # ARG = SP - n - 5
+      @file.puts('D=M')
+      @file.puts("@#{num_args}")
+      @file.puts('D=D-A')
+      @file.puts('@5')
+      @file.puts('D=D-A')
+      @file.puts('@ARG')
+      @file.puts('M=D')
+      @file.puts('@SP')                       # LCL = SP
+      @file.puts('D=M')
+      @file.puts('@LCL')
+      @file.puts('M=D')
+      @file.puts("@#{function_name}")
+      @file.puts('0;JMP')
+      @file.puts("(#{return_address_label})")
     end
 
     def write_function(function_name, num_locals)
+      @current_function_name = function_name
       @file.puts("// function #{function_name} #{num_locals}")
+      @file.puts("(#{function_name})")
       (0...num_locals.to_i).each do |i|              # repeat num_locals times:
         write_push_pop(:C_PUSH, 'constant', 0)  # PUSH 0
       end
