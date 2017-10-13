@@ -27,7 +27,7 @@ M=0
 A=M
 M=D
 // label LOOP_START
-(functionName.LOOP_START)
+(GLOBAL.LOOP_START)
 // push argument 0
 @ARG
 D=M
@@ -149,8 +149,8 @@ M=M+1
 M=M-1
 A=M
 D=M
-@functionName.LOOP_START
-D;JGT
+@GLOBAL.LOOP_START
+D;JNE
 // push local 0
 @LCL
 D=M
