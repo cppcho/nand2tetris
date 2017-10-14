@@ -12,12 +12,6 @@ module Vm
       @current_function_name = 'GLOBAL'
 
       @file = File.new(file_path, 'w+')
-
-      # @file.puts('// Initialize SP (RAM[0]) to 256 (Initial stack pointer)')
-      # @file.puts('@256')
-      # @file.puts('D=A')
-      # @file.puts('@SP')
-      # @file.puts('M=D')
     end
 
     def set_file_name(file_name)
