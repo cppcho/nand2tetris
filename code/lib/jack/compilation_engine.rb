@@ -1,216 +1,174 @@
 module Jack
   class CompilationEngine
-
-    # non-terminal:
-
-
     def initialize(tokenizer, output)
       # tokenizer: a fresh new tokenizer created from a file stream
       @tokenizer = tokenizer
       @output = output
 
-      @write_file_cache = []
-
       @tokenizer.advance
     end
 
     def compile_class
-      raise "Invalid token #{@tokenizer.token}" unless @tokenizer.keyword == 'class'
+      return false unless keyword?('class')
 
+      ret = true
       write_file('<class>')
 
       # 'class'
       puts_keyword
-      @tokenizer.advance
+      advance
 
       # className
-      raise "Invalid className #{@tokenizer.token}" unless @tokenizer.token_type == :IDENTIFIER
       puts_identifier
-      @tokenizer.advance
+      advance
 
-      # '{'
-      raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == '{'
+      # {
       puts_symbol
-      @tokenizer.advance
+      advance
 
-      # classVarDec*
       loop do
-        begin
-          compile_class_var_dec
-        rescue => e
-          p e
-          break
-        end
+        break unless compile_class_var_dec
       end
 
-      # classVarDec*
       loop do
-        begin
-          compile_subroutine_dec
-        rescue => e
-          p e
-          break
-        end
+        break unless compile_subroutine_dec
       end
 
-      # '}'
-      raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == '}'
+      # }
       puts_symbol
+      advance
+
       write_file('</class>')
 
-      @tokenizer.advance
+      p 'success'
+
+      true
     end
 
     def compile_class_var_dec
-      # ('static', 'field') type varName (',' varName)* ';'
-      raise "Invalid keyword #{@tokenizer.token}" unless %w[static field].include?(@tokenizer.keyword)
-
+      return false unless keyword?(%w[static field])
       write_file('<classVarDec>')
-
       puts_keyword
-      @tokenizer.advance
+      advance
 
-      # type
       puts_type
-      @tokenizer.advance
+      advance
 
-      # varName
       puts_identifier
-      @tokenizer.advance
+      advance
 
       loop do
-        begin
-          raise "invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ','
-          puts_symbol
-          @tokenizer.advance
+        break unless symbol?(',')
+        puts_symbol
+        advance
 
-          puts_identifier
-          @tokenizer.advance
-        rescue => exception
-          break
-        end
+        puts_identifier
+        advance
       end
 
-      raise "invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ';'
+      # ;
       puts_symbol
-
+      advance
       write_file('</classVarDec>')
-      @tokenizer.advance
+      true
     end
 
     def compile_subroutine_dec
-      raise "Invalid keyword #{@tokenizer.token}" unless %w[constructor function method].include?(@tokenizer.keyword)
+      return false unless keyword?(%w[constructor function method])
       write_file('<subroutineDec>')
-
       puts_keyword
-      @tokenizer.advance
+      advance
 
-      if @tokenizer.keyword == 'void'
+      if keyword?('void')
         puts_keyword
       else
         puts_type
       end
-      @tokenizer.advance
 
       # subroutineName
       puts_identifier
-      @tokenizer.advance
+      advance
 
-      raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == '('
+      # (
       puts_symbol
-      @tokenizer.advance
+      advance
 
       compile_parameter_list
 
-      raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ')'
+      # )
       puts_symbol
-      @tokenizer.advance
+      advance
 
       compile_subroutine_body
-
       write_file('</subroutineDec>')
-      @tokenizer.advance
+      true
     end
 
     def compile_parameter_list
+      return false unless type?
       write_file('<parameterList>')
-      begin
-        raise "empty" if @tokenizer.token == ')'
+      puts_type
+      advance
+      puts_identifier
+      advance
+      loop do
+        break unless symbol?(',')
+        advance
 
         puts_type
-        @tokenizer.advance
+        advance
+
         puts_identifier
-        @tokenizer.advance
-        loop do
-          begin
-            raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ','
-            puts_symbol
-            @tokenizer.advance
-            puts_type
-            @tokenizer.advance
-            puts_identifier
-            @tokenizer.advance
-          rescue => exception
-            break
-          end
-        end
-      rescue => exception
-        nil
+        advance
       end
       write_file('</parameterList>')
+      true
     end
 
     def compile_subroutine_body
-      raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == '{'
-
+      return false unless symbol?('{')
       write_file('<subroutineBody>')
-
       puts_symbol
-      @tokenizer.advance
+      advance
 
-      begin
-        compile_var_dec
-      rescue => exception
-        nil
+      loop do
+        break unless compile_var_dec
       end
 
       compile_statements
 
-      raise 'error' unless @tokenizer.symbol == '}'
+      # }
       puts_symbol
-      @tokenizer.advance
-
+      advance
       write_file('</subroutineBody>')
+      true
     end
 
     def compile_var_dec
-      raise 'error' unless @tokenizer.keyword == 'var'
+      return false unless keyword?('var')
       write_file('<varDec>')
       puts_keyword
-      @tokenizer.advance
+      advance
 
       puts_type
-      @tokenizer.advance
+      advance
 
       puts_identifier
-      @tokenizer.advance
+      advance
 
-      begin
-        raise 'error' unless @tokenizer.symbol == ','
+      loop do
+        break unless symbol?(',')
         puts_symbol
-        @tokenizer.advance
-
+        advance
         puts_identifier
-        @tokenizer.advance
-      rescue => exception
-        nil
+        advance
       end
 
-      raise 'error' unless @tokenizer.symbol == ';'
+      # ;
       puts_symbol
+      advance
 
-      write_file('</varDec>')
-      @tokenizer.advance
+      true
     end
 
     def compile_statements
@@ -471,21 +429,24 @@ module Jack
         puts_symbol
         @tokenizer.advance
       end
-
     end
 
     private
 
-    def write_file(str, pending = false)
-      @write_file_cache.push(str)
-      commit_write unless pending
+    def advance
+      @tokenizer.advance
     end
 
-    def commit_write
-      @write_file_cache.each do |line|
-        @output.puts(line)
-      end
-      @write_file_cache = []
+    def token
+      @tokenizer.token
+    end
+
+    def token_type
+      @tokenizer.token_type
+    end
+
+    def write_file(str)
+      @output.puts(str)
     end
 
     def puts_type
@@ -494,37 +455,57 @@ module Jack
       elsif @tokenizer.token_type == :IDENTIFIER
         puts_identifier
       else
-        raise "invalid type #{@tokenizer.token}"
+        false
       end
     end
 
+    def type?
+      %w[int char boolean].include?(@tokenizer.keyword) || @tokenizer.token_type == :IDENTIFIER
+    end
+
+    def symbol?(symbols)
+      @tokenizer.token_type == :SYMBOL && Array(symbols).include?(@tokenizer.symbol)
+    end
+
+    def keyword?(symbols)
+      @tokenizer.token_type == :KEYWORD && Array(keywords).include?(@tokenizer.keyword)
+    end
+
+    def identifier?
+      @tokenizer.token_type == :IDENTIFIER
+    end
+
+    def int_const?
+      @tokenizer.token_type == :INT_CONST
+    end
+
+    def string_const?
+      @tokenizer.token_type == :STRING_CONST
+    end
+
     def puts_symbol
-      raise "invalid symbol #{@tokenizer.token}" unless @tokenizer.token_type == :SYMBOL
       puts_tag('symbol', @tokenizer.symbol)
     end
 
     def puts_keyword
-      raise "invalid keyword #{@tokenizer.token}" unless @tokenizer.token_type == :KEYWORD
       puts_tag('keyword', @tokenizer.keyword)
     end
 
     def puts_identifier
-      raise "invalid identifier #{@tokenizer.token}" unless @tokenizer.token_type == :IDENTIFIER
       puts_tag('identifier', @tokenizer.identifier)
     end
 
     def puts_int_const
-      raise "invalid int const #{@tokenizer.token}" unless @tokenizer.token_type == :INT_CONST
       puts_tag('integerConstant', @tokenizer.int_val)
     end
 
     def puts_string_const
-      raise "invalid string const #{@tokenizer.token}" unless @tokenizer.token_type == :STRING_CONST
       puts_tag('stringConstant', @tokenizer.string_val)
     end
 
     def puts_tag(tag_name, value)
       write_file("<#{tag_name}>#{value}</#{tag_name}>")
+      true
     end
   end
 end
