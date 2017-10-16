@@ -27,15 +27,16 @@ end
 
 raise 'no input files' if @input_file_paths.empty?
 
-@input_file_paths.each do |path|
-  p path
+@input_file_paths.each do |input_path|
+  puts "Compiling #{input_path}..."
+  output_path = File.join(File.dirname(input_path), File.basename(input_path, JACK_EXT) + XML_EXT)
 
-  output_path = File.join(File.dirname(path), File.basename(path, JACK_EXT) + XML_EXT)
-
-  input_file = File.new(path, 'r')
+  # Setup Tokenizer
+  input_file = File.new(input_path, 'r')
   tokenizer = Jack::Tokenizer.new(input_file)
   input_file.close
 
+  # Setup Compilation Engine
   output_file = File.new(output_path, 'w+')
   compilation_engine = Jack::CompilationEngine.new(tokenizer, output_file)
   compilation_engine.compile_class
