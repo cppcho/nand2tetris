@@ -3,10 +3,10 @@
 $LOAD_PATH.unshift "#{File.dirname(__FILE__)}/../lib"
 
 require 'jack/tokenizer'
-require 'jack/compilation_engine_xml'
+require 'jack/compilation_engine'
 
-JACK_EXT = '.jack'
-XML_EXT = 'TT.xml'
+JACK_EXT = '.jack'.freeze
+VM_EXT = '.vm'.freeze
 
 path = ARGV[0]
 
@@ -28,17 +28,19 @@ end
 raise 'no input files' if @input_file_paths.empty?
 
 @input_file_paths.each do |input_path|
-  puts "Analyzing #{input_path}..."
-  output_path = File.join(File.dirname(input_path), File.basename(input_path, JACK_EXT) + XML_EXT)
+  puts "Compiling #{input_path}..."
+  output_path = File.join(File.dirname(input_path), File.basename(input_path, JACK_EXT) + VM_EXT)
 
   # Setup Tokenizer
   input_file = File.new(input_path, 'r')
   tokenizer = Jack::Tokenizer.new(input_file)
   input_file.close
 
-  # Setup Compilation Engine
+  # Create output file
   output_file = File.new(output_path, 'w+')
-  compilation_engine = Jack::CompilationEngineXml.new(tokenizer, output_file)
+
+  # Setup Compilation Engine
+  compilation_engine = Jack::CompilationEngine.new(tokenizer, output_file)
   compilation_engine.compile_class
   output_file.close
 end
