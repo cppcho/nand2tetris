@@ -43,10 +43,11 @@ module Jack
       '<',
       '>',
       '=',
-      '-',
+      '~',
     ].freeze
 
-    REGEX_COMMENT = %r{(//.*\n|/\*\*?.*\*/)}
+    REGEX_COMMENT_1 = %r{//.*\n}
+    REGEX_COMMENT_2 = %r{/\*.*?\*/}
 
     def initialize(input_stream)
       @current_token = nil
@@ -55,7 +56,9 @@ module Jack
       @source = input_stream.read
 
       # remove all comments
-      @source.gsub!(REGEX_COMMENT, ' ')
+      @source.gsub!(REGEX_COMMENT_1, ' ')
+      @source.tr!("\n", ' ')
+      @source.gsub!(REGEX_COMMENT_2, ' ')
 
       # change all whitespace / newline to 1 space
       @source.gsub!(/\s+/, ' ')

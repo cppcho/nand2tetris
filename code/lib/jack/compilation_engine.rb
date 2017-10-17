@@ -1,3 +1,5 @@
+require 'cgi'
+
 module Jack
   class CompilationEngine
     def initialize(tokenizer, output)
@@ -14,8 +16,7 @@ module Jack
       ret = true
       write_file('<class>')
 
-      # 'class'
-      puts_keyword
+      puts_keyword('class')
       advance
 
       # className
@@ -23,7 +24,7 @@ module Jack
       advance
 
       # {
-      puts_symbol
+      puts_symbol('{')
       advance
 
       loop do
@@ -35,20 +36,19 @@ module Jack
       end
 
       # }
-      puts_symbol
-      advance
+      puts_symbol('}')
+
+      advance rescue nil
 
       write_file('</class>')
-
       p 'success'
-
       true
     end
 
     def compile_class_var_dec
       return false unless keyword?(%w[static field])
       write_file('<classVarDec>')
-      puts_keyword
+      puts_keyword(%w[static field])
       advance
 
       puts_type
@@ -59,15 +59,14 @@ module Jack
 
       loop do
         break unless symbol?(',')
-        puts_symbol
+        puts_symbol(',')
         advance
 
         puts_identifier
         advance
       end
 
-      # ;
-      puts_symbol
+      puts_symbol(';')
       advance
       write_file('</classVarDec>')
       true
@@ -76,27 +75,25 @@ module Jack
     def compile_subroutine_dec
       return false unless keyword?(%w[constructor function method])
       write_file('<subroutineDec>')
-      puts_keyword
+      puts_keyword(%w[constructor function method])
       advance
 
       if keyword?('void')
-        puts_keyword
+        puts_keyword('void')
       else
         puts_type
       end
+      advance
 
-      # subroutineName
       puts_identifier
       advance
 
-      # (
-      puts_symbol
+      puts_symbol('(')
       advance
 
       compile_parameter_list
 
-      # )
-      puts_symbol
+      puts_symbol(')')
       advance
 
       compile_subroutine_body
@@ -105,21 +102,23 @@ module Jack
     end
 
     def compile_parameter_list
-      return false unless type?
       write_file('<parameterList>')
-      puts_type
-      advance
-      puts_identifier
-      advance
-      loop do
-        break unless symbol?(',')
-        advance
-
+      if type?
         puts_type
         advance
-
         puts_identifier
         advance
+        loop do
+          break unless symbol?(',')
+          puts_symbol(',')
+          advance
+
+          puts_type
+          advance
+
+          puts_identifier
+          advance
+        end
       end
       write_file('</parameterList>')
       true
@@ -128,7 +127,7 @@ module Jack
     def compile_subroutine_body
       return false unless symbol?('{')
       write_file('<subroutineBody>')
-      puts_symbol
+      puts_symbol('{')
       advance
 
       loop do
@@ -137,8 +136,7 @@ module Jack
 
       compile_statements
 
-      # }
-      puts_symbol
+      puts_symbol('}')
       advance
       write_file('</subroutineBody>')
       true
@@ -147,7 +145,7 @@ module Jack
     def compile_var_dec
       return false unless keyword?('var')
       write_file('<varDec>')
-      puts_keyword
+      puts_keyword('var')
       advance
 
       puts_type
@@ -158,16 +156,15 @@ module Jack
 
       loop do
         break unless symbol?(',')
-        puts_symbol
+        puts_symbol(',')
         advance
         puts_identifier
         advance
       end
 
-      # ;
-      puts_symbol
+      puts_symbol(';')
       advance
-
+      write_file('</varDec>')
       true
     end
 
@@ -176,258 +173,264 @@ module Jack
       loop do
         case @tokenizer.keyword
         when 'let'
-          write_file('<letStatement>')
-          puts_keyword
-          @tokenizer.advance
-
-          puts_identifier
-          @tokenizer.advance
-
-          begin
-            raise 'error' unless @tokenizer.symbol == '['
-            puts_symbol
-            @tokenizer.advance
-
-            compile_expression
-
-            raise 'error' unless @tokenizer.symbol == ']'
-            puts_symbol
-            @tokenizer.advance
-          rescue => exception
-            nil
-          end
-
-          raise 'error' unless @tokenizer.symbol == '='
-          puts_symbol
-          @tokenizer.advance
-
-          compile_expression
-
-          raise 'error' unless @tokenizer.symbol == ';'
-          puts_symbol
-          @tokenizer.advance
-
-          write_file('</letStatement>')
+          compile_let
         when 'if'
-          write_file('<ifStatement>')
-
-          puts_keyword
-          @tokenizer.advance
-
-          raise 'error' unless @tokenizer.symbol == '('
-          puts_symbol
-          @tokenizer.advance
-
-          compile_expression
-
-          raise 'error' unless @tokenizer.symbol == ')'
-          puts_symbol
-          @tokenizer.advance
-
-          raise 'error' unless @tokenizer.symbol == '{'
-          puts_symbol
-          @tokenizer.advance
-
-          compile_statements
-
-          raise 'error' unless @tokenizer.symbol == '}'
-          puts_symbol
-          @tokenizer.advance
-
-          begin
-            raise 'error' unless @tokenizer.keyword == 'else'
-            puts_keyword
-            @tokenizer.advance
-
-            raise 'error' unless @tokenizer.symbol == '{'
-            puts_symbol
-            @tokenizer.advance
-
-            compile_statements
-
-            raise 'error' unless @tokenizer.symbol == '}'
-            puts_symbol
-            @tokenizer.advance
-          rescue => exception
-            nil
-          end
-
-          write_file('</ifStatement>')
+          compile_if
         when 'while'
-          write_file('<whileStatement>')
-
-          puts_keyword
-          @tokenizer.advance
-
-          raise 'error' unless @tokenizer.symbol == '('
-          puts_symbol
-          @tokenizer.advance
-
-          compile_expression
-
-          raise 'error' unless @tokenizer.symbol == ')'
-          puts_symbol
-          @tokenizer.advance
-
-          raise 'error' unless @tokenizer.symbol == '{'
-          puts_symbol
-          @tokenizer.advance
-
-          compile_statements
-
-          raise 'error' unless @tokenizer.symbol == '}'
-          puts_symbol
-          @tokenizer.advance
-
-          write_file('</whileStatement>')
+          compile_while
         when 'do'
-          write_file('<doStatement>')
-
-          puts_keyword
-          @tokenizer.advance
-
-          compile_subroutine_call
-
-          raise 'error' unless @tokenizer.symbol == ';'
-          puts_symbol
-          @tokenizer.advance
-          write_file('</doStatement>')
+          compile_do
         when 'return'
-          write_file('<returnStatement>')
-          puts_keyword
-          @tokenizer.advance
-
-          if @tokenizer.symbol != ';'
-            compile_expression
-          end
-
-          raise 'error' unless @tokenizer.symbol == ';'
-          puts_symbol
-          @tokenizer.advance
-
-          write_file('</returnStatement>')
+          compile_return
         else
-          raise "Invalid keyword #{@tokenizer.token}"
+          break
         end
       end
       write_file('</statements>')
     end
 
+    def compile_do
+      return false unless keyword?('do')
+      write_file('<doStatement>')
+
+      puts_keyword
+      advance
+
+      compile_subroutine_call
+
+      puts_symbol
+      advance
+
+      write_file('</doStatement>')
+      true
+    end
+
+    def compile_let
+      return false unless keyword?('let')
+      write_file('<letStatement>')
+
+      puts_keyword('let')
+      advance
+
+      puts_identifier
+      advance
+
+      if symbol?('[')
+        puts_symbol('[')
+        advance
+
+        compile_expression
+
+        puts_symbol(']')
+        advance
+      end
+
+      puts_symbol('=')
+      advance
+
+      compile_expression
+
+      puts_symbol(';')
+      advance
+
+      write_file('</letStatement>')
+      true
+    end
+
+    def compile_while
+      return false unless keyword?('while')
+      write_file('<whileStatement>')
+
+      puts_keyword('while')
+      advance
+
+      puts_symbol('(')
+      advance
+
+      compile_expression
+
+      puts_symbol(')')
+      advance
+
+      puts_symbol('{')
+      advance
+
+      compile_statements
+
+      puts_symbol('}')
+      advance
+
+      write_file('</whileStatement>')
+      true
+    end
+
+    def compile_return
+      return false unless keyword?('return')
+
+      write_file('<returnStatement>')
+      puts_keyword('return')
+      advance
+
+      compile_expression unless symbol?(';')
+
+      puts_symbol(';')
+      advance
+
+      write_file('</returnStatement>')
+      true
+    end
+
+    def compile_if
+      return false unless keyword?('if')
+      write_file('<ifStatement>')
+
+      puts_keyword('if')
+      advance
+
+      puts_symbol('(')
+      advance
+
+      compile_expression
+
+      puts_symbol(')')
+      advance
+
+      puts_symbol('{')
+      advance
+
+      compile_statements
+
+      puts_symbol('}')
+      advance
+
+      if keyword?('else')
+        puts_keyword('else')
+        advance
+
+        puts_symbol('{')
+        advance
+
+        compile_statements
+
+        puts_symbol('}')
+        advance
+      end
+
+      write_file('</ifStatement>')
+      true
+    end
+
     def compile_expression
       write_file('<expression>')
       compile_term
-      begin
-        raise "Invalid op #{@tokenizer.token}" unless %w[+ - * / & | < > =].include?(@tokenizer.symbol)
-        puts_symbol
-        @tokenizer.advance
+      loop do
+        break unless symbol?(%w[+ - * / & | < > =])
+        puts_symbol(%w[+ - * / & | < > =])
+        advance
 
         compile_term
-      rescue => exception
-        nil
       end
       write_file('</expression>')
+      true
     end
 
     def compile_term
       write_file('<term>')
 
-      case @tokenizer.token_type
+      case token_type
       when :INT_CONST
         puts_int_const
+        advance
       when :STRING_CONST
         puts_string_const
+        advance
       when :KEYWORD
-        raise "Invalid keyword #{@tokenizer.token}" unless %w[true false null this].include?($tokenizer.keyword)
-        puts_keyword
+        puts_keyword(%w[true false null this])
+        advance
       when :IDENTIFIER
-        if @tokenizer.next_token == '('
+        if %w[( .].include?(@tokenizer.next_token)
           compile_subroutine_call
         else
           puts_identifier
-          if @tokenizer.next_token == '['
-            @tokenizer.advance
-            puts_symbol
-            @tokenizer.advance
-
+          advance
+          if symbol?('[')
+            puts_symbol('[')
+            advance
             compile_expression
-
-            raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ']'
-            puts_symbol
+            puts_symbol(']')
+            advance
           end
         end
       when :SYMBOL
-        if @tokenizer.symbol == '('
-          puts_symbol
-          @tokenizer.advance
-
+        if symbol?('(')
+          puts_symbol('(')
+          advance
           compile_expression
-
-          raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ')'
-          puts_symbol
-        elsif %w[- ~].include?(@tokenizer.symbol)
-          puts_symbol
-          @tokenizer.advance
-
-          compile_term
+          puts_symbol(')')
+          advance
         else
-          raise "error"
+          puts_symbol(%w[- ~])
+          advance
+          compile_term
         end
       end
-      @tokenizer.advance
       write_file('</term>')
+      true
     end
 
     def compile_expression_list
-
       write_file('<expressionList>')
-      begin
-        raise "empty" if @tokenizer.token == ')'
-
+      compile_expression
+      loop do
+        break unless symbol?(',')
+        puts_symbol(',')
+        advance
         compile_expression
-
-        loop do
-          raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ','
-          puts_symbol
-          @tokenizer.advance
-          compile_expression
-        end
-      rescue => exception
-        nil
       end
       write_file('</expressionList>')
+      true
     end
 
     def compile_subroutine_call
-      raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.token_type == :IDENTIFIER
+      return false unless identifier?
 
+      # subroutineName / className / varName
       puts_identifier
-      @tokenizer.advance
+      advance
 
-      if @tokenizer.symbol == '('
+      if symbol?('(')
         puts_symbol
-        @tokenizer.advance
+        advance
+        # TODO: Any better method?
+        if symbol?(')')
+          write_file('<expressionList>')
+          write_file('</expressionList>')
+        else
+          compile_expression_list
+        end
+        puts_symbol(')')
+        advance
+      elsif symbol?('.')
+        puts_symbol('.')
+        advance
 
-        compile_expression_list
-
-        raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ')'
-        puts_symbol
-        @tokenizer.advance
-      elsif @tokenizer.symbol == '.'
-        puts_symbol
-        @tokenizer.advance
-
+        # subroutineName
         puts_identifier
-        @tokenizer.advance
+        advance
 
-        raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == '('
-        puts_symbol
-        @tokenizer.advance
+        puts_symbol('(')
+        advance
 
-        compile_expression_list
+        # TODO: Any better method?
+        if symbol?(')')
+          write_file('<expressionList>')
+          write_file('</expressionList>')
+        else
+          compile_expression_list
+        end
 
-        raise "Invalid symbol #{@tokenizer.token}" unless @tokenizer.symbol == ')'
-        puts_symbol
-        @tokenizer.advance
+        puts_symbol(')')
+        advance
       end
     end
 
@@ -446,6 +449,7 @@ module Jack
     end
 
     def write_file(str)
+      # p str
       @output.puts(str)
     end
 
@@ -464,30 +468,32 @@ module Jack
     end
 
     def symbol?(symbols)
-      @tokenizer.token_type == :SYMBOL && Array(symbols).include?(@tokenizer.symbol)
+      token_type == :SYMBOL && Array(symbols).include?(@tokenizer.symbol)
     end
 
-    def keyword?(symbols)
-      @tokenizer.token_type == :KEYWORD && Array(keywords).include?(@tokenizer.keyword)
+    def keyword?(keywords)
+      token_type == :KEYWORD && Array(keywords).include?(@tokenizer.keyword)
     end
 
     def identifier?
-      @tokenizer.token_type == :IDENTIFIER
+      token_type == :IDENTIFIER
     end
 
     def int_const?
-      @tokenizer.token_type == :INT_CONST
+      token_type == :INT_CONST
     end
 
     def string_const?
-      @tokenizer.token_type == :STRING_CONST
+      token_type == :STRING_CONST
     end
 
-    def puts_symbol
-      puts_tag('symbol', @tokenizer.symbol)
+    def puts_symbol(symbols = nil)
+      raise "Invalid symbol #{token} (expected: #{symbols}" unless symbols.nil? || symbol?(symbols)
+      puts_tag('symbol', CGI.escapeHTML(@tokenizer.symbol))
     end
 
-    def puts_keyword
+    def puts_keyword(keywords = nil)
+      raise "Invalid keyword #{token} (expected: #{keywords}" unless keywords.nil? || keyword?(keywords)
       puts_tag('keyword', @tokenizer.keyword)
     end
 
