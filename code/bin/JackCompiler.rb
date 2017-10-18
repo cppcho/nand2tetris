@@ -41,6 +41,6 @@ raise 'no input files' if @input_file_paths.empty?
 
   # Setup Compilation Engine
   compilation_engine = Jack::CompilationEngine.new(tokenizer, output_file)
-  compilation_engine.compile_class
+  compilation_engine.compile
   output_file.close
 end

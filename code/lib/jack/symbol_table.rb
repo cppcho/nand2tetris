@@ -18,18 +18,20 @@ module Jack
     end
 
     # kind: :STATIC, :FIELD, :ARG, :VAR
-    def define(name, type, kind)
+    def define(name: "", type: nil, kind: nil)
+      raise 'Invalid name or type' if name.empty? || type.nil?
+      res = nil
       case kind
       when :STATIC, :FIELD
         raise "Class symbol '#{name}' has already been defined" if @class_symbols.key?(name)
-        @class_symbols[name] = {
+        res = @class_symbols[name] = {
           type: type,
           kind: kind,
           index: @index_counter[kind]
         }
       when :ARG, :VAR
         raise "Subroutine symbol '#{name}' has already been defined" if @subroutine_symbols.key?(name)
-        @subroutine_symbols[name] = {
+        res = @subroutine_symbols[name] = {
           type: type,
           kind: kind,
           index: @index_counter[kind]
@@ -38,6 +40,7 @@ module Jack
         raise "Invalid kind #{kind}"
       end
       @index_counter[kind] += 1
+      res
     end
 
     # kind: :STATIC, :FIELD, :ARG, :VAR

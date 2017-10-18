@@ -1,3 +1,5 @@
+require_relative 'vm_writer'
+require_relative 'symbol_table'
 require 'cgi'
 
 module Jack
@@ -5,166 +7,172 @@ module Jack
     def initialize(tokenizer, output)
       # tokenizer: a fresh new tokenizer created from a file stream
       @tokenizer = tokenizer
-      @output = output
+      @vm_writer = VmWriter.new(output)
+      @symbol_table = SymbolTable.new
+      @current_class_name = nil
+      @current_subroutine_name = nil
+      @current_subroutine_type = nil
+      @current_subroutine_return_type = nil
 
-      @tokenizer.advance
+      advance
+
+      # TODO: remove this
+      @output = output
     end
+
+    def compile
+      compile_class
+    end
+
+    private
 
     def compile_class
       return false unless keyword?('class')
-
-      ret = true
-      write_file('<class>')
-
-      puts_keyword('class')
+      @vm_writer.write_comment("class")
+      check_keyword('class')
+      advance
+      define_identifier(is_class: true)
+      advance
+      check_symbol('{')
       advance
 
-      # className
-      puts_identifier
-      advance
 
-      # {
-      puts_symbol('{')
-      advance
+      loop { break unless compile_class_var_dec }
+      loop { break unless compile_subroutine_dec }
 
-      loop do
-        break unless compile_class_var_dec
-      end
-
-      loop do
-        break unless compile_subroutine_dec
-      end
-
-      # }
-      puts_symbol('}')
-
-      advance rescue nil
-
-      write_file('</class>')
-      p 'success'
+      check_symbol('}')
+      advance(true)
+      @vm_writer.write_comment("END class")
       true
     end
 
     def compile_class_var_dec
       return false unless keyword?(%w[static field])
-      write_file('<classVarDec>')
-      puts_keyword(%w[static field])
-      advance
+      @vm_writer.write_comment("classVarDec")
 
-      puts_type
+      check_keyword(%w[static field])
+      first_token = token
+      kind = first_token == 'static' ? :STATIC : :FIELD
       advance
-
-      puts_identifier
+      second_token = token
+      check_type
+      advance
+      define_identifier(type: second_token, kind: kind)
       advance
 
       loop do
         break unless symbol?(',')
-        puts_symbol(',')
+        check_symbol(',')
         advance
-
-        puts_identifier
+        define_identifier(type: second_token, kind: kind)
         advance
       end
 
-      puts_symbol(';')
+      check_symbol(';')
       advance
-      write_file('</classVarDec>')
+      @vm_writer.write_comment("END classVarDec")
       true
     end
 
     def compile_subroutine_dec
       return false unless keyword?(%w[constructor function method])
-      write_file('<subroutineDec>')
-      puts_keyword(%w[constructor function method])
+      @vm_writer.write_comment("subroutineDec")
+      check_keyword(%w[constructor function method])
+      @current_subroutine_type = token
       advance
 
       if keyword?('void')
-        puts_keyword('void')
+        check_keyword('void')
       else
-        puts_type
+        check_type
       end
+      @current_subroutine_return_type = token
       advance
 
-      puts_identifier
+      define_identifier(is_subroutine: true)
+      @current_subroutine_name = token
       advance
 
-      puts_symbol('(')
+      check_symbol('(')
       advance
-
       compile_parameter_list
-
-      puts_symbol(')')
+      check_symbol(')')
       advance
 
       compile_subroutine_body
-      write_file('</subroutineDec>')
+      @vm_writer.write_comment("END subroutineDec")
       true
     end
 
     def compile_parameter_list
-      write_file('<parameterList>')
+      @vm_writer.write_comment("parameterList")
       if type?
-        puts_type
+        check_type
+        type = token
         advance
-        puts_identifier
+        define_identifier(kind: :ARG, type: type)
         advance
         loop do
           break unless symbol?(',')
-          puts_symbol(',')
+          check_symbol(',')
           advance
 
-          puts_type
+          check_type
+          type = token
           advance
 
-          puts_identifier
+          define_identifier(kind: :ARG, type: type)
           advance
         end
       end
-      write_file('</parameterList>')
+      @vm_writer.write_comment("END parameterList")
       true
     end
 
     def compile_subroutine_body
       return false unless symbol?('{')
-      write_file('<subroutineBody>')
-      puts_symbol('{')
+      @vm_writer.write_comment('subroutineBody')
+      check_symbol('{')
       advance
 
-      loop do
-        break unless compile_var_dec
-      end
+      loop { break unless compile_var_dec }
+
+      function_name = "#{@current_class_name}.#{@current_subroutine_name}"
+      n_locals = @symbol_table.var_count(:VAR)
+      @vm_writer.write_function(function_name, n_locals)
 
       compile_statements
 
-      puts_symbol('}')
+      check_symbol('}')
       advance
-      write_file('</subroutineBody>')
+      @vm_writer.write_comment('END subroutineBody')
       true
     end
 
     def compile_var_dec
       return false unless keyword?('var')
-      write_file('<varDec>')
-      puts_keyword('var')
+      @vm_writer.write_comment('varDec')
+      check_keyword('var')
       advance
 
-      puts_type
+      check_type
+      type = token
       advance
 
-      puts_identifier
+      define_identifier(type: type, kind: :VAR)
       advance
 
       loop do
         break unless symbol?(',')
-        puts_symbol(',')
+        check_symbol(',')
         advance
-        puts_identifier
+        define_identifier(type: type, kind: :VAR)
         advance
       end
 
-      puts_symbol(';')
+      check_symbol(';')
       advance
-      write_file('</varDec>')
+      @vm_writer.write_comment('END varDec')
       true
     end
 
@@ -193,12 +201,12 @@ module Jack
       return false unless keyword?('do')
       write_file('<doStatement>')
 
-      puts_keyword
+      check_keyword('do')
       advance
 
       compile_subroutine_call
 
-      puts_symbol
+      check_symbol(';')
       advance
 
       write_file('</doStatement>')
@@ -209,28 +217,28 @@ module Jack
       return false unless keyword?('let')
       write_file('<letStatement>')
 
-      puts_keyword('let')
+      check_keyword('let')
       advance
 
-      puts_identifier
+      check_identifier
       advance
 
       if symbol?('[')
-        puts_symbol('[')
+        check_symbol('[')
         advance
 
         compile_expression
 
-        puts_symbol(']')
+        check_symbol(']')
         advance
       end
 
-      puts_symbol('=')
+      check_symbol('=')
       advance
 
       compile_expression
 
-      puts_symbol(';')
+      check_symbol(';')
       advance
 
       write_file('</letStatement>')
@@ -241,23 +249,23 @@ module Jack
       return false unless keyword?('while')
       write_file('<whileStatement>')
 
-      puts_keyword('while')
+      check_keyword('while')
       advance
 
-      puts_symbol('(')
+      check_symbol('(')
       advance
 
       compile_expression
 
-      puts_symbol(')')
+      check_symbol(')')
       advance
 
-      puts_symbol('{')
+      check_symbol('{')
       advance
 
       compile_statements
 
-      puts_symbol('}')
+      check_symbol('}')
       advance
 
       write_file('</whileStatement>')
@@ -268,12 +276,12 @@ module Jack
       return false unless keyword?('return')
 
       write_file('<returnStatement>')
-      puts_keyword('return')
+      check_keyword('return')
       advance
 
       compile_expression unless symbol?(';')
 
-      puts_symbol(';')
+      check_symbol(';')
       advance
 
       write_file('</returnStatement>')
@@ -284,35 +292,35 @@ module Jack
       return false unless keyword?('if')
       write_file('<ifStatement>')
 
-      puts_keyword('if')
+      check_keyword('if')
       advance
 
-      puts_symbol('(')
+      check_symbol('(')
       advance
 
       compile_expression
 
-      puts_symbol(')')
+      check_symbol(')')
       advance
 
-      puts_symbol('{')
+      check_symbol('{')
       advance
 
       compile_statements
 
-      puts_symbol('}')
+      check_symbol('}')
       advance
 
       if keyword?('else')
-        puts_keyword('else')
+        check_keyword('else')
         advance
 
-        puts_symbol('{')
+        check_symbol('{')
         advance
 
         compile_statements
 
-        puts_symbol('}')
+        check_symbol('}')
         advance
       end
 
@@ -325,7 +333,7 @@ module Jack
       compile_term
       loop do
         break unless symbol?(%w[+ - * / & | < > =])
-        puts_symbol(%w[+ - * / & | < > =])
+        check_symbol(%w[+ - * / & | < > =])
         advance
 
         compile_term
@@ -345,31 +353,31 @@ module Jack
         puts_string_const
         advance
       when :KEYWORD
-        puts_keyword(%w[true false null this])
+        check_keyword(%w[true false null this])
         advance
       when :IDENTIFIER
         if %w[( .].include?(@tokenizer.next_token)
           compile_subroutine_call
         else
-          puts_identifier
+          check_identifier
           advance
           if symbol?('[')
-            puts_symbol('[')
+            check_symbol('[')
             advance
             compile_expression
-            puts_symbol(']')
+            check_symbol(']')
             advance
           end
         end
       when :SYMBOL
         if symbol?('(')
-          puts_symbol('(')
+          check_symbol('(')
           advance
           compile_expression
-          puts_symbol(')')
+          check_symbol(')')
           advance
         else
-          puts_symbol(%w[- ~])
+          check_symbol(%w[- ~])
           advance
           compile_term
         end
@@ -383,7 +391,7 @@ module Jack
       compile_expression
       loop do
         break unless symbol?(',')
-        puts_symbol(',')
+        check_symbol(',')
         advance
         compile_expression
       end
@@ -395,11 +403,11 @@ module Jack
       return false unless identifier?
 
       # subroutineName / className / varName
-      puts_identifier
+      check_identifier
       advance
 
       if symbol?('(')
-        puts_symbol
+        check_symbol
         advance
         # TODO: Any better method?
         if symbol?(')')
@@ -408,17 +416,17 @@ module Jack
         else
           compile_expression_list
         end
-        puts_symbol(')')
+        check_symbol(')')
         advance
       elsif symbol?('.')
-        puts_symbol('.')
+        check_symbol('.')
         advance
 
         # subroutineName
-        puts_identifier
+        check_identifier
         advance
 
-        puts_symbol('(')
+        check_symbol('(')
         advance
 
         # TODO: Any better method?
@@ -429,15 +437,19 @@ module Jack
           compile_expression_list
         end
 
-        puts_symbol(')')
+        check_symbol(')')
         advance
       end
     end
 
-    private
-
-    def advance
-      @tokenizer.advance
+    def advance(no_throw = false)
+      begin
+        @tokenizer.advance
+      rescue => exception
+        return false if no_throw
+        raise exception
+      end
+      true
     end
 
     def token
@@ -453,13 +465,13 @@ module Jack
       @output.puts(str)
     end
 
-    def puts_type
+    def check_type
       if %w[int char boolean].include?(@tokenizer.keyword)
-        puts_keyword
+        check_keyword
       elsif @tokenizer.token_type == :IDENTIFIER
-        puts_identifier
+        check_identifier
       else
-        false
+        raise "Invalid type #{token}"
       end
     end
 
@@ -487,18 +499,37 @@ module Jack
       token_type == :STRING_CONST
     end
 
-    def puts_symbol(symbols = nil)
-      raise "Invalid symbol #{token} (expected: #{symbols}" unless symbols.nil? || symbol?(symbols)
-      puts_tag('symbol', CGI.escapeHTML(@tokenizer.symbol))
+    def check_symbol(symbols)
+      raise "Invalid symbol #{token} (expected: #{symbols})" unless symbol?(symbols)
     end
 
-    def puts_keyword(keywords = nil)
-      raise "Invalid keyword #{token} (expected: #{keywords}" unless keywords.nil? || keyword?(keywords)
-      puts_tag('keyword', @tokenizer.keyword)
+
+    # 2017-10-17
+    def check_keyword(keywords)
+      raise "Invalid keyword #{token} (expected: #{keywords})" unless keyword?(keywords)
     end
 
-    def puts_identifier
-      puts_tag('identifier', @tokenizer.identifier)
+    def define_identifier(is_class: false, is_subroutine: false, kind: nil, type: nil)
+      raise "Invalid identifier #{token}" unless identifier?
+      identifier = @tokenizer.identifier
+      if is_class
+        @current_class_name = identifier
+      elsif is_subroutine
+        @current_subroutine_name = identifier
+      else
+        @symbol_table.define(name: identifier, type: type, kind: kind)
+      end
+    end
+
+    def check_identifier
+      raise "Invalid identifier #{token}" unless identifier?
+      identifier = @tokenizer.identifier
+      {
+        identifier: identifier,
+        kind:@symbol_table.kind_of(identifier),
+        type: @symbol_table.type_of(identifier),
+        index:  @symbol_table.index_of(identifier)
+      }
     end
 
     def puts_int_const

@@ -5,6 +5,10 @@ module Jack
       @tab_enabled = false
     end
 
+    def write_comment(comment)
+      output_line("// #{comment}")
+    end
+
     def write_push(segment, index)
       output_line("push #{VmWriter.segment_str(segment)} #{index}")
     end
