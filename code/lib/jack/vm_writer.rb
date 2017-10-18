@@ -63,7 +63,8 @@ module Jack
       when :SUB
         'sub'
       when :NEG
-        'neg' when :EQ
+        'neg'
+      when :EQ
         'eq'
       when :GT
         'gt'

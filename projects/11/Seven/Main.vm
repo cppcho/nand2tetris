@@ -1,32 +1,10 @@
-// class
-// subroutineDec
-// parameterList
-// END parameterList
-// subroutineBody
 function Main.main 0
-<statements>
-<doStatement>
-<expressionList>
-<expression>
-<term>
-<integerConstant>1</integerConstant>
-</term>
-<term>
-<expression>
-<term>
-<integerConstant>2</integerConstant>
-</term>
-<term>
-<integerConstant>3</integerConstant>
-</term>
-</expression>
-</term>
-</expression>
-</expressionList>
-</doStatement>
-<returnStatement>
-</returnStatement>
-</statements>
-  // END subroutineBody
-  // END subroutineDec
-  // END class
+  push constant 1
+  push constant 2
+  push constant 3
+  call Math.multiply 2
+  add
+  call Output.printInt 1
+  pop temp 0
+  push constant 0
+  return

@@ -28,7 +28,7 @@ module Jack
 
     def compile_class
       return false unless keyword?('class')
-      @vm_writer.write_comment("class")
+      write_comment("class")
       check_keyword('class')
       advance
       define_identifier(is_class: true)
@@ -42,13 +42,13 @@ module Jack
 
       check_symbol('}')
       advance(true)
-      @vm_writer.write_comment("END class")
+      write_comment("END class")
       true
     end
 
     def compile_class_var_dec
       return false unless keyword?(%w[static field])
-      @vm_writer.write_comment("classVarDec")
+      write_comment("classVarDec")
 
       check_keyword(%w[static field])
       first_token = token
@@ -70,15 +70,16 @@ module Jack
 
       check_symbol(';')
       advance
-      @vm_writer.write_comment("END classVarDec")
+      write_comment("END classVarDec")
       true
     end
 
     def compile_subroutine_dec
       return false unless keyword?(%w[constructor function method])
-      @vm_writer.write_comment("subroutineDec")
+      start_subroutine
+      write_comment("subroutineDec")
       check_keyword(%w[constructor function method])
-      @current_subroutine_type = token
+      subroutine_type = token
       advance
 
       if keyword?('void')
@@ -86,11 +87,14 @@ module Jack
       else
         check_type
       end
-      @current_subroutine_return_type = token
+      subroutine_return_type = token
       advance
 
-      define_identifier(is_subroutine: true)
-      @current_subroutine_name = token
+      define_identifier(
+        is_subroutine: true,
+        subroutine_type: subroutine_type,
+        subroutine_return_type: subroutine_return_type
+      )
       advance
 
       check_symbol('(')
@@ -100,12 +104,12 @@ module Jack
       advance
 
       compile_subroutine_body
-      @vm_writer.write_comment("END subroutineDec")
+      write_comment("END subroutineDec")
       true
     end
 
     def compile_parameter_list
-      @vm_writer.write_comment("parameterList")
+      write_comment("parameterList")
       if type?
         check_type
         type = token
@@ -125,33 +129,31 @@ module Jack
           advance
         end
       end
-      @vm_writer.write_comment("END parameterList")
+      write_comment("END parameterList")
       true
     end
 
     def compile_subroutine_body
       return false unless symbol?('{')
-      @vm_writer.write_comment('subroutineBody')
+      write_comment('subroutineBody')
       check_symbol('{')
       advance
 
       loop { break unless compile_var_dec }
 
-      function_name = "#{@current_class_name}.#{@current_subroutine_name}"
-      n_locals = @symbol_table.var_count(:VAR)
-      @vm_writer.write_function(function_name, n_locals)
+      write_subroutine
 
       compile_statements
 
       check_symbol('}')
       advance
-      @vm_writer.write_comment('END subroutineBody')
+      write_comment('END subroutineBody')
       true
     end
 
     def compile_var_dec
       return false unless keyword?('var')
-      @vm_writer.write_comment('varDec')
+      write_comment('varDec')
       check_keyword('var')
       advance
 
@@ -172,12 +174,12 @@ module Jack
 
       check_symbol(';')
       advance
-      @vm_writer.write_comment('END varDec')
+      write_comment('END varDec')
       true
     end
 
     def compile_statements
-      write_file('<statements>')
+      write_comment('statements')
       loop do
         case @tokenizer.keyword
         when 'let'
@@ -194,12 +196,12 @@ module Jack
           break
         end
       end
-      write_file('</statements>')
+      write_comment('END statements')
     end
 
     def compile_do
       return false unless keyword?('do')
-      write_file('<doStatement>')
+      write_comment('doStatement')
 
       check_keyword('do')
       advance
@@ -209,20 +211,25 @@ module Jack
       check_symbol(';')
       advance
 
-      write_file('</doStatement>')
+      # Remove the return result
+      @vm_writer.write_pop(:TEMP, 0)
+
+      write_comment('END doStatement')
       true
     end
 
     def compile_let
       return false unless keyword?('let')
-      write_file('<letStatement>')
+      write_comment('letStatement')
 
       check_keyword('let')
       advance
 
-      check_identifier
+      var_info = check_identifier
+      raise "Variable #{var_info[:identifier]} not found." unless var_info[:is_var]
       advance
 
+      # TODO
       if symbol?('[')
         check_symbol('[')
         advance
@@ -241,13 +248,15 @@ module Jack
       check_symbol(';')
       advance
 
-      write_file('</letStatement>')
+      write_var(:POP, var_info)
+
+      write_comment('END letStatement')
       true
     end
 
     def compile_while
       return false unless keyword?('while')
-      write_file('<whileStatement>')
+      write_comment('whileStatement')
 
       check_keyword('while')
       advance
@@ -268,29 +277,33 @@ module Jack
       check_symbol('}')
       advance
 
-      write_file('</whileStatement>')
+      write_comment('END whileStatement')
       true
     end
 
     def compile_return
       return false unless keyword?('return')
-
-      write_file('<returnStatement>')
+      write_comment('returnStatement')
       check_keyword('return')
       advance
 
-      compile_expression unless symbol?(';')
+      if symbol?(';')
+        @vm_writer.write_push(:CONST, 0)
+      else
+        compile_expression
+      end
+      @vm_writer.write_return
 
       check_symbol(';')
       advance
 
-      write_file('</returnStatement>')
+      write_comment('END returnStatement')
       true
     end
 
     def compile_if
       return false unless keyword?('if')
-      write_file('<ifStatement>')
+      write_comment('ifStatement')
 
       check_keyword('if')
       advance
@@ -324,42 +337,46 @@ module Jack
         advance
       end
 
-      write_file('</ifStatement>')
+      write_comment('END ifStatement')
       true
     end
 
     def compile_expression
-      write_file('<expression>')
+      write_comment('expression')
       compile_term
       loop do
         break unless symbol?(%w[+ - * / & | < > =])
         check_symbol(%w[+ - * / & | < > =])
+        arithmetic_symbol = token
         advance
 
         compile_term
+
+        write_op(arithmetic_symbol)
       end
-      write_file('</expression>')
+      write_comment('END expression')
       true
     end
 
     def compile_term
-      write_file('<term>')
+      write_comment('term')
 
       case token_type
       when :INT_CONST
-        puts_int_const
+        write_term_int_const
         advance
       when :STRING_CONST
-        puts_string_const
+        write_term_string_const
         advance
       when :KEYWORD
-        check_keyword(%w[true false null this])
+        write_term_keyword
         advance
       when :IDENTIFIER
+        # TODO
         if %w[( .].include?(@tokenizer.next_token)
           compile_subroutine_call
         else
-          check_identifier
+          v_info = check_identifier
           advance
           if symbol?('[')
             check_symbol('[')
@@ -368,6 +385,7 @@ module Jack
             check_symbol(']')
             advance
           end
+          write_var(:PUSH, v_info)
         end
       when :SYMBOL
         if symbol?('(')
@@ -377,68 +395,83 @@ module Jack
           check_symbol(')')
           advance
         else
+          # unaryOp term
           check_symbol(%w[- ~])
+          op = token
           advance
           compile_term
+
+          write_unary_op(op)
         end
       end
-      write_file('</term>')
+      write_comment('END term')
       true
     end
 
     def compile_expression_list
-      write_file('<expressionList>')
+      write_comment('expressionList')
       compile_expression
+      expression_count = 1
       loop do
         break unless symbol?(',')
         check_symbol(',')
         advance
         compile_expression
+        expression_count += 1
       end
-      write_file('</expressionList>')
-      true
+      write_comment('END expressionList')
+      expression_count
     end
 
     def compile_subroutine_call
       return false unless identifier?
 
-      # subroutineName / className / varName
-      check_identifier
+      identifier_1_info = check_identifier
       advance
 
       if symbol?('(')
-        check_symbol
-        advance
-        # TODO: Any better method?
-        if symbol?(')')
-          write_file('<expressionList>')
-          write_file('</expressionList>')
-        else
-          compile_expression_list
-        end
+        # Function call
         check_symbol(')')
         advance
+        expression_count =
+          if symbol?(')')
+            0
+          else
+            compile_expression_list
+          end
+        check_symbol(')')
+        advance
+        write_call(identifier_1_info[:identifier], expression_count)
       elsif symbol?('.')
+        # Method / static method call
         check_symbol('.')
         advance
-
-        # subroutineName
-        check_identifier
+        identifier_2_info = check_identifier
         advance
-
         check_symbol('(')
         advance
 
-        # TODO: Any better method?
-        if symbol?(')')
-          write_file('<expressionList>')
-          write_file('</expressionList>')
-        else
-          compile_expression_list
-        end
+        write_var(:PUSH, identifier_1_info) if identifier_1_info[:is_var]
 
+        expression_count =
+          if symbol?(')')
+            0
+          else
+            compile_expression_list
+          end
         check_symbol(')')
         advance
+
+        if identifier_1_info[:index].nil?
+          # identifier 1 is a class
+          function_name = "#{identifier_1_info[:identifier]}.#{identifier_2_info[:identifier]}"
+          n_args = expression_count
+        else
+          # identifier 1 is an object
+          function_name = "#{identifier_1_info[:type]}.#{identifier_2_info[:identifier]}"
+          n_args = expression_count + 1
+        end
+        write_call(function_name, n_args)
       end
     end
 
@@ -467,7 +500,7 @@ module Jack
 
     def check_type
       if %w[int char boolean].include?(@tokenizer.keyword)
-        check_keyword
+        check_keyword(%w[int char boolean])
       elsif @tokenizer.token_type == :IDENTIFIER
         check_identifier
       else
@@ -509,13 +542,22 @@ module Jack
       raise "Invalid keyword #{token} (expected: #{keywords})" unless keyword?(keywords)
     end
 
-    def define_identifier(is_class: false, is_subroutine: false, kind: nil, type: nil)
+    def define_identifier(
+      is_class: false,
+      is_subroutine: false,
+      kind: nil,
+      type: nil,
+      subroutine_type: nil,
+      subroutine_return_type: nil
+    )
       raise "Invalid identifier #{token}" unless identifier?
       identifier = @tokenizer.identifier
       if is_class
         @current_class_name = identifier
       elsif is_subroutine
         @current_subroutine_name = identifier
+        @current_subroutine_type = subroutine_type
+        @current_subroutine_return_type = subroutine_return_type
       else
         @symbol_table.define(name: identifier, type: type, kind: kind)
       end
@@ -528,21 +570,140 @@ module Jack
         identifier: identifier,
         kind:@symbol_table.kind_of(identifier),
         type: @symbol_table.type_of(identifier),
-        index:  @symbol_table.index_of(identifier)
+        index:  @symbol_table.index_of(identifier),
+        is_var: !@symbol_table.index_of(identifier).nil?
       }
     end
 
-    def puts_int_const
-      puts_tag('integerConstant', @tokenizer.int_val)
+    def write_term_int_const
+      raise "Invalid int const #{token}" unless token_type == :INT_CONST
+      @vm_writer.write_push(:CONST, @tokenizer.int_val)
     end
 
-    def puts_string_const
-      puts_tag('stringConstant', @tokenizer.string_val)
+    def write_term_string_const
+      raise "Invalid string const #{token}" unless token_type == :STRING_CONST
+      string_val = @tokenizer.string_val
+      @vm_writer.write_push(:CONST, string_val.length)
+      @vm_writer.write_call('String.new', 1)
+      # Append each charactor to the string
+      string_val.each_char do |char|
+        @vm_writer.write_push(:CONST, char.ord)
+        @vm_writer.write_call('String.appendChar', 2)
+      end
     end
 
-    def puts_tag(tag_name, value)
-      write_file("<#{tag_name}>#{value}</#{tag_name}>")
-      true
+    def write_term_keyword
+      check_keyword(%w[true false null this])
+      keyword = @tokenizer.keyword
+      case keyword
+      when 'true'
+        @vm_writer.write_push(:CONST, 0)
+        @vm_writer.write_arithmetic(:NOT)
+      when 'false'
+        @vm_writer.write_push(:CONST, 0)
+      when 'null'
+        @vm_writer.write_push(:CONST, 0)
+      when 'this'
+        @vm_writer.write_push(:POINTER, 0)
+      end
+    end
+
+    def write_call(function_name, n_args)
+      @vm_writer.write_call(function_name, n_args)
+    end
+
+    # mode: :PUSH, :POP
+    def write_var(mode, identifier_info)
+      raise "Variable #{identifier_info[:identifier]} not found." unless identifier_info[:is_var]
+      kind = identifier_info[:kind]
+      idx = identifier_info[:index]
+
+      vm_action =
+        if mode == :PUSH
+          :write_push
+        elsif mode == :POP
+          :write_pop
+        else
+          raise "Invalid mode #{mode}"
+        end
+
+      case kind
+      when :STATIC
+        @vm_writer.send vm_action, :STATIC, idx
+      when :FIELD
+        @vm_writer.send vm_action, :THIS, idx
+      when :ARG
+        @vm_writer.send vm_action, :ARG, idx
+      when :VAR
+        @vm_writer.send vm_action, :LOCAL, idx
+      else
+        raise "Invalid kind #{kind}"
+      end
+    end
+
+    def start_subroutine
+      @symbol_table.start_subroutine
+    end
+
+    def write_subroutine
+      raise "Invalid subroutine name #{@current_subroutine_name}" unless @current_class_name
+      # write function statement
+      function_name = "#{@current_class_name}.#{@current_subroutine_name}"
+      n_locals = @symbol_table.var_count(:VAR)
+      @vm_writer.write_function(function_name, n_locals)
+
+      if @subroutine_return_type == 'constructor'
+        # alloc memory for field vars
+        n_fields = @symbol_table.var_count(:FIELD)
+        @vm_writer.write_push(:CONST, n_fields)
+        @vm_writer.write_call('Memory.alloc', 1)
+
+        # set this pointer to the newly allocated memory
+        @vm_writer.write_pop('pointer', 0)
+      elsif @subroutine_type == 'method'
+        @vm_writer.write_push(:ARG, 0)  # argument 0 is the object that call the method
+        @vm_writer.write_push(:POINTER, 0)   # set to this
+      end
+    end
+
+    def write_op(op)
+      case op
+      when '+'
+        @vm_writer.write_arithmetic(:ADD)
+      when '-'
+        @vm_writer.write_arithmetic(:SUB)
+      when '*'
+        @vm_writer.write_call('Math.multiply', 2)
+      when '/'
+        @vm_writer.write_call('Math.divide', 2)
+      when '&'
+        @vm_writer.write_arithmetic(:AND)
+      when '|'
+        @vm_writer.write_arithmetic(:OR)
+      when '<'
+        @vm_writer.write_arithmetic(:LT)
+      when '>'
+        @vm_writer.write_arithmetic(:GT)
+      when '='
+        @vm_writer.write_arithmetic(:EQ)
+      else
+        raise "Invalid binary op #{op}"
+      end
+    end
+
+    def write_unary_op(op)
+      case op
+      when '-'
+        @vm_writer.write_arithmetic(:NEG)
+      when '~'
+        @vm_writer.write_arithmetic(:NOT)
+      else
+        raise "Invalid unary op #{op}"
+      end
+    end
+
+    def write_comment(comment)
+      # @vm_writer.write_comment(comment)
     end
   end
 end
